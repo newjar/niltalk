@@ -6,6 +6,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/go-chi/cors"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -215,6 +216,21 @@ func main() {
 
 	// Register HTTP routes.
 	r := chi.NewRouter()
+
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{
+			http.MethodHead,
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+		},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: false,
+	}))
+
 	r.Get("/", wrap(handleIndex, app, 0))
 	r.Get("/ws/{roomID}", wrap(handleWS, app, hasAuth|hasRoom))
 
