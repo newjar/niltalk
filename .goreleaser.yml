@@ -31,8 +31,8 @@ dockers:
     binaries:
     - niltalk
     image_templates:
-    - "kailashnadh/niltalk:latest"
-    - "kailashnadh/niltalk:{{ .Tag }}"
+    - "yobelchris/niltalk:latest"
+    - "yobelchris/niltalk:{{ .Tag }}"
     skip_push: false
     dockerfile: Dockerfile
     extra_files:
