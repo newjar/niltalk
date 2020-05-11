@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 
@@ -140,7 +141,9 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Set the session cookie.
 	ck := &http.Cookie{Name: app.cfg.SessionCookie, Value: sessID, Path: "/"}
 	http.SetCookie(w, ck)
-	respondJSON(w, true, nil, http.StatusOK)
+	respondJSON(w, map[string]interface{}{
+		app.cfg.SessionCookie: sessID,
+	}, nil, http.StatusOK)
 }
 
 // handleLogout logs out a peer.
@@ -154,6 +157,10 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	if room == nil {
 		respondJSON(w, nil, errors.New("room is invalid or has expired"), http.StatusBadRequest)
 		return
+	}
+
+	if ctx.sess.ID == "" {
+		ctx.sess.ID = r.Header.Get("session_id")
 	}
 
 	if err := app.hub.Store.RemoveSession(ctx.sess.ID, room.ID); err != nil {
@@ -176,12 +183,21 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 		room = ctx.room
 	)
 
-	if ctx.sess.ID == "" {
+	if ctx.sess.ID == "" && r.URL.Query().Get("session_id") == "" {
+		app.logger.Printf("Handle Websocket failed: %s : invalid session",r.RemoteAddr)
 		respondJSON(w, nil, errors.New("invalid session"), http.StatusForbidden)
 		return
 	}
 
+	if ctx.sess.ID == "" {
+		ctx.sess.ID = r.URL.Query().Get("session_id")
+	}
+
 	// Create the WS connection.
+	upgrader.CheckOrigin = func(_ *http.Request) bool {
+		return true
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		app.logger.Printf("Websocket upgrade failed: %s: %v", r.RemoteAddr, err)
@@ -290,6 +306,7 @@ func wrap(next http.HandlerFunc, app *App, opts uint8) http.HandlerFunc {
 			if ck != nil && ck.Value != "" {
 				s, err := app.hub.Store.GetSession(ck.Value, roomID)
 				if err != nil {
+					fmt.Printf("error checking session: %v", err)
 					app.logger.Printf("error checking session: %v", err)
 					respondJSON(w, nil, errors.New("error checking session"), http.StatusForbidden)
 					return
