@@ -69,10 +69,14 @@ func NewHub(cfg *Config, store store.Store, l *log.Logger) *Hub {
 
 // AddRoom creates a new room in the store, adds it to the hub, and
 // returns the room (which has to be .Run() on a goroutine then).
-func (h *Hub) AddRoom(name string, password []byte) (*Room, error) {
-	id, err := h.generateRoomID(h.cfg.RoomIDLen, 5)
-	if err != nil {
-		return nil, err
+func (h *Hub) AddRoom(id string, name string, password []byte) (*Room, error) {
+	var err error
+
+	if id == "" {
+		id, err = h.generateRoomID(h.cfg.RoomIDLen, 5)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Add the room to DB.

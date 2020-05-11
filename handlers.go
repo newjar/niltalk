@@ -26,9 +26,10 @@ type sess struct {
 
 // reqCtx is the context injected into every request.
 type reqCtx struct {
-	app  *App
-	room *hub.Room
-	sess sess
+	app    *App
+	room   *hub.Room
+	roomID string
+	sess   sess
 }
 
 // jsonResp is the envelope for all JSON API responses.
@@ -102,20 +103,33 @@ func handleRoomPage(w http.ResponseWriter, r *http.Request) {
 // handleLogin authenticates a peer into a room.
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	var (
+		err error
 		ctx  = r.Context().Value("ctx").(*reqCtx)
 		app  = ctx.app
 		room = ctx.room
+		roomID = ctx.roomID
 	)
-
-	if room == nil {
-		respondJSON(w, nil, errors.New("room is invalid or has expired"), http.StatusBadRequest)
-		return
-	}
 
 	var req reqRoom
 	if err := readJSONReq(r, &req); err != nil {
 		respondJSON(w, nil, errors.New("error parsing JSON request"), http.StatusBadRequest)
 		return
+	}
+
+	//Create room if room is not existed
+	if room == nil {
+		pwdHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 8)
+		if err != nil {
+			app.logger.Printf("error hashing password: %v", err)
+			respondJSON(w, "Error hashing password", nil, http.StatusInternalServerError)
+			return
+		}
+
+		room, err = app.hub.AddRoom(roomID, roomID, pwdHash)
+		if err != nil {
+			respondJSON(w, nil, err, http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Validate password.
@@ -159,10 +173,6 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ctx.sess.ID == "" {
-		ctx.sess.ID = r.Header.Get("session_id")
-	}
-
 	if err := app.hub.Store.RemoveSession(ctx.sess.ID, room.ID); err != nil {
 		app.logger.Printf("error removing session: %v", err)
 		respondJSON(w, nil, errors.New("error removing session"), http.StatusInternalServerError)
@@ -183,14 +193,10 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 		room = ctx.room
 	)
 
-	if ctx.sess.ID == "" && r.URL.Query().Get("session_id") == "" {
+	if ctx.sess.ID == "" {
 		app.logger.Printf("Handle Websocket failed: %s : invalid session",r.RemoteAddr)
 		respondJSON(w, nil, errors.New("invalid session"), http.StatusForbidden)
 		return
-	}
-
-	if ctx.sess.ID == "" {
-		ctx.sess.ID = r.URL.Query().Get("session_id")
 	}
 
 	// Create the WS connection.
@@ -280,7 +286,7 @@ func handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create and activate the new room.
-	room, err := app.hub.AddRoom(req.Name, pwdHash)
+	room, err := app.hub.AddRoom("", req.Name, pwdHash)
 	if err != nil {
 		respondJSON(w, nil, err, http.StatusInternalServerError)
 		return
@@ -300,11 +306,23 @@ func wrap(next http.HandlerFunc, app *App, opts uint8) http.HandlerFunc {
 			roomID = chi.URLParam(r, "roomID")
 		)
 
+		req.roomID = roomID
+
 		// Check if the request is authenticated.
 		if opts&hasAuth != 0 {
 			ck, _ := r.Cookie(app.cfg.SessionCookie)
-			if ck != nil && ck.Value != "" {
-				s, err := app.hub.Store.GetSession(ck.Value, roomID)
+			if (ck != nil && ck.Value != "") || r.URL.Query().Get("session_id") != "" || r.Header.Get("session_id") != "" {
+				session := ""
+
+				if (ck == nil || ck.Value == "") && r.URL.Query().Get("session_id") != "" {
+					session = r.URL.Query().Get("session_id")
+				}else if (ck == nil || ck.Value == "") && r.URL.Query().Get("session_id") != "" {
+					session = r.Header.Get("session_id")
+				}else {
+					session = ck.Value
+				}
+
+				s, err := app.hub.Store.GetSession(session, roomID)
 				if err != nil {
 					fmt.Printf("error checking session: %v", err)
 					app.logger.Printf("error checking session: %v", err)
