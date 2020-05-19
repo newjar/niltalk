@@ -19,6 +19,11 @@ type Store interface {
 	ClearSessions(roomID string) error
 }
 
+type MessageCache interface {
+	AddMessageCache(payload Message) error
+	GetMessageCache(roomID string, limit int) ([]Message,error)
+}
+
 // Room represents the properties of a room in the store.
 type Room struct {
 	ID        string    `json:"id"`
@@ -31,6 +36,12 @@ type Room struct {
 type Sess struct {
 	ID     string `json:"id"`
 	Handle string `json:"name"`
+}
+
+type Message struct {
+	Time time.Time `json:"time"`
+	RoomID string `json:"room_id"`
+	Payload []byte `json:"payload"`
 }
 
 // ErrRoomNotFound indicates that the requested room was not found.

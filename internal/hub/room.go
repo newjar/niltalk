@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"github.com/knadh/niltalk/store"
 	"sync"
 	"time"
 
@@ -55,9 +56,6 @@ type Room struct {
 	disposeSig chan bool
 	closed     bool
 
-	// Message / payload cache.
-	payloadCache [][]byte
-
 	timestamp time.Time
 }
 
@@ -72,7 +70,6 @@ func NewRoom(id, name string, password []byte, h *Hub) *Room {
 		broadcastQ:   make(chan []byte, 100),
 		peerQ:        make(chan peerReq, 100),
 		disposeSig:   make(chan bool),
-		payloadCache: make([][]byte, 0, h.cfg.MaxCachedMessages),
 	}
 }
 
@@ -135,8 +132,14 @@ loop:
 
 				// Send the peer last N message.
 				if r.hub.cfg.MaxCachedMessages > 0 {
-					for _, b := range r.payloadCache {
-						req.peer.SendData(b)
+					caches, err := r.hub.MessageCache.GetMessageCache(r.ID, r.hub.cfg.MaxCachedMessages)
+
+					if err != nil {
+						r.hub.log.Printf("Error get message cache (roomID=%s) : %s",r.ID,err)
+					}else {
+						for _, b := range caches {
+							req.peer.SendData(b.Payload)
+						}
 					}
 				}
 
@@ -210,12 +213,15 @@ func (r *Room) recordMsgPayload(b []byte) {
 		return
 	}
 
-	n := len(r.payloadCache)
-	if n >= r.hub.cfg.MaxCachedMessages {
-		r.payloadCache = r.payloadCache[1:]
-	}
+	err := r.hub.MessageCache.AddMessageCache(store.Message{
+		Time:    time.Now().UTC(),
+		RoomID:  r.ID,
+		Payload: b,
+	})
 
-	r.payloadCache = append(r.payloadCache, b)
+	if err != nil {
+		r.hub.log.Printf("Error add message cache (roomID=%s; payload=%s) : %s",r.ID,b,err)
+	}
 }
 
 // queuePeerReq queues a peer addition / removal request to the room.

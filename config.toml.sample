@@ -47,5 +47,10 @@ active_conns = 100
 idle_conns = 20
 timeout = "3s"
 
+[message_cache]
+address = "mongodb:27017" # Eg: 127.0.0.1:27017
+password = ""
+username = ""
+
 prefix_room = "NIL:ROOM:%s"
 prefix_session = "NIL:SESS:ROOM:%s"

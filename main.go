@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-chi/cors"
+	"github.com/knadh/niltalk/store/mongodb"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -201,11 +202,22 @@ func main() {
 		logger.Fatalf("error unmarshalling 'store' config: %v", err)
 	}
 
+	var mongodbCfg mongodb.Config
+	if err := ko.Unmarshal("message_cache", &mongodbCfg); err != nil {
+		logger.Fatalf("error unmarshalling 'message_cache' config: %v", err)
+	}
+
 	store, err := redis.New(storeCfg)
 	if err != nil {
 		log.Fatalf("error initializing store: %v", err)
 	}
-	app.hub = hub.NewHub(app.cfg, store, logger)
+
+	messageCache, err := mongodb.New(mongodbCfg)
+	if err != nil {
+		log.Fatalf("error initializing message cache: %v", err)
+	}
+
+	app.hub = hub.NewHub(app.cfg, store, messageCache, logger)
 
 	// Compile static templates.
 	tpl, err := stuffbin.ParseTemplatesGlob(nil, app.fs, "/static/templates/*.html")

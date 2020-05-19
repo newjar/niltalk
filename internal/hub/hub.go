@@ -49,6 +49,7 @@ type Config struct {
 // Hub acts as the controller and container for all chat rooms.
 type Hub struct {
 	Store store.Store
+	MessageCache store.MessageCache
 	rooms map[string]*Room
 
 	cfg *Config
@@ -57,13 +58,14 @@ type Hub struct {
 }
 
 // NewHub returns a new instance of Hub.
-func NewHub(cfg *Config, store store.Store, l *log.Logger) *Hub {
+func NewHub(cfg *Config, store store.Store, messageCache store.MessageCache, l *log.Logger) *Hub {
 	return &Hub{
 		rooms: make(map[string]*Room),
 
-		cfg:   cfg,
-		Store: store,
-		log:   l,
+		cfg:          cfg,
+		Store:        store,
+		MessageCache: messageCache,
+		log:          l,
 	}
 }
 
