@@ -13,7 +13,7 @@ deps:
 
 .PHONY: build
 build:
-	go build -o ${BIN} -ldflags="-s -w -X 'main.buildString=${BUILDSTR}'"
+	CGO_ENABLED=0 GOOS=linux go build -o ${BIN} -ldflags="-s -w -X 'main.buildString=${BUILDSTR}'"
 
 .PHONY: run
 run: build

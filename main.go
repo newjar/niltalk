@@ -243,7 +243,6 @@ func main() {
 		AllowCredentials: false,
 	}))
 
-	//r.Get("/", wrap(handleIndex, app, 0))
 	r.Get("/ws/{roomID}", wrap(handleWS, app, hasAuth|hasRoom))
 
 	// API.
@@ -252,10 +251,13 @@ func main() {
 	r.Post("/api/rooms", wrap(handleCreateRoom, app, 0))
 
 	// Views.
-	//r.Get("/r/{roomID}", wrap(handleRoomPage, app, hasAuth|hasRoom))
-	//r.Get("/static/*", func(w http.ResponseWriter, r *http.Request) {
-	//	app.fs.FileServer().ServeHTTP(w, r)
-	//})
+	if !app.cfg.OnlyAPI {
+		r.Get("/", wrap(handleIndex, app, 0))
+		r.Get("/r/{roomID}", wrap(handleRoomPage, app, hasAuth|hasRoom))
+		r.Get("/static/*", func(w http.ResponseWriter, r *http.Request) {
+			app.fs.FileServer().ServeHTTP(w, r)
+		})
+	}
 
 	// Start the app.
 	srv := &http.Server{

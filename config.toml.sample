@@ -6,6 +6,9 @@ root_url = "http://localhost:9000"
 
 name = "Niltalk chat"
 
+# Set "true" if you just need the API without the static view
+only_api = false
+
 max_rooms = 1000
 max_peers_per_room = 25
 

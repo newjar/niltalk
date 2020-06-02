@@ -31,6 +31,7 @@ type Config struct {
 	RootURL string `koanf:"root_url"`
 
 	Name              string        `koanf:"name"`
+	OnlyAPI			  bool			`koanf:"only_api"`
 	RoomIDLen         int           `koanf:"room_id_length"`
 	MaxCachedMessages int           `koanf:"max_cached_messages"`
 	MaxMessageLen     int           `koanf:"max_message_length"`
