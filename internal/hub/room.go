@@ -132,7 +132,7 @@ loop:
 
 				// Send the peer last N message.
 				if r.hub.cfg.MaxCachedMessages > 0 {
-					caches, err := r.hub.MessageCache.GetMessageCache(r.ID, r.hub.cfg.MaxCachedMessages)
+					caches, err := r.hub.MessageCache.GetMessageCache(r.ID, r.hub.cfg.MaxCachedMessages, store.DateFilter{})
 
 					if err != nil {
 						r.hub.log.Printf("Error get message cache (roomID=%s) : %s",r.ID,err)
@@ -213,14 +213,22 @@ func (r *Room) recordMsgPayload(b []byte) {
 		return
 	}
 
+	var payload payloadMsgWrap
+
+	if err := json.Unmarshal(b,&payload); err != nil {
+		r.hub.log.Printf("Error unmarshal payload message when try to add message cache (roomID=%s; payload=%s) : %s",r.ID,b,err)
+		return
+	}
+
 	err := r.hub.MessageCache.AddMessageCache(store.Message{
-		Time:    time.Now().UTC(),
+		Time:    payload.Timestamp,
 		RoomID:  r.ID,
 		Payload: b,
 	})
 
 	if err != nil {
 		r.hub.log.Printf("Error add message cache (roomID=%s; payload=%s) : %s",r.ID,b,err)
+		return
 	}
 }
 

@@ -2,6 +2,7 @@ package hub
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"log"
 	"sync"
@@ -191,4 +192,34 @@ func GenerateGUID(n int) (string, error) {
 		bytes[k] = dictionary[v%byte(len(dictionary))]
 	}
 	return string(bytes), nil
+}
+
+func (h *Hub) GetChatHistory(roomID string, start time.Time, end time.Time) ([]payloadMsgWrap, error) {
+	messagesCaches, err := h.MessageCache.GetMessageCache(roomID, 0, store.DateFilter{
+		Start: start,
+		End:   end,
+	})
+
+	if err != nil {
+		h.log.Printf("Error get chat history (roomID='%s';start='%s';end='%s') : %s",roomID,start,end,err)
+		return nil, err
+	}
+
+	var chatHistory []payloadMsgWrap
+	for _, messageCache := range messagesCaches {
+		var payload payloadMsgWrap
+
+		err = json.Unmarshal(messageCache.Payload,&payload)
+
+		if err != nil {
+			h.log.Printf("Error unmarshal payload in get chat history (roomID='%s';start='%s';end='%s';payload='%s') : %s",roomID,start,end,messageCache.Payload,err)
+			return nil, err
+		}
+
+		if payload.Type == TypeMessage {
+			chatHistory = append(chatHistory,payload)
+		}
+	}
+
+	return chatHistory, nil
 }

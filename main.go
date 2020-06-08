@@ -249,6 +249,7 @@ func main() {
 	r.Post("/api/rooms/{roomID}/login", wrap(handleLogin, app, hasRoom))
 	r.Delete("/api/rooms/{roomID}/login", wrap(handleLogout, app, hasAuth|hasRoom))
 	r.Post("/api/rooms", wrap(handleCreateRoom, app, 0))
+	r.Get("/api/rooms/{roomID}/history", wrap(handleChatHistory, app, hasAuth|hasRoom))
 
 	// Views.
 	if !app.cfg.OnlyAPI {

@@ -43,14 +43,38 @@ func (m *MongoDB) AddMessageCache(payload store.Message) error {
 	return err
 }
 
-func (m *MongoDB) GetMessageCache(roomID string, limit int) ([]store.Message,error) {
-	cur, err := m.mongodb.Collection(MESSAGE_CACHE_COLLECTION).Aggregate(context.Background(),mongo.Pipeline{
+func (m *MongoDB) GetMessageCache(roomID string, limit int, dateFilter store.DateFilter) ([]store.Message,error) {
+	matchQuery := bson.D{
+		{"room_id",roomID},
+	}
+
+	if !dateFilter.Start.IsZero() || !dateFilter.End.IsZero() {
+		dateFilterValue := bson.D{}
+		if !dateFilter.Start.IsZero() {
+			dateFilterValue = append(dateFilterValue,bson.E{
+				Key: "$gte",
+				Value: dateFilter.Start.UTC(),
+			})
+		}
+
+		if !dateFilter.End.IsZero() {
+			dateFilterValue = append(dateFilterValue,bson.E{
+				Key: "$lte",
+				Value: dateFilter.End.UTC(),
+			})
+		}
+
+		matchQuery = append(matchQuery,bson.E{
+			Key: "_id",
+			Value: dateFilterValue,
+		})
+	}
+
+	pipelineQuery := mongo.Pipeline{
 		bson.D{
 			{
 				"$match",
-				bson.D{
-					{"room_id",roomID},
-				},
+				matchQuery,
 			},
 		},
 		bson.D{
@@ -61,21 +85,27 @@ func (m *MongoDB) GetMessageCache(roomID string, limit int) ([]store.Message,err
 				},
 			},
 		},
-		bson.D{
+	}
+
+	if limit > 0 {
+		pipelineQuery = append(pipelineQuery,bson.D{
 			{
 				"$limit",
 				limit,
 			},
-		},
-		bson.D{
-			{
-				"$sort",
-				bson.D{
-					{"_id",1},
-				},
+		})
+	}
+
+	pipelineQuery = append(pipelineQuery,bson.D{
+		{
+			"$sort",
+			bson.D{
+				{"_id",1},
 			},
 		},
 	})
+
+	cur, err := m.mongodb.Collection(MESSAGE_CACHE_COLLECTION).Aggregate(context.Background(),pipelineQuery)
 
 	if err != nil {
 		return nil, err

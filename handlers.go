@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/gorilla/websocket"
@@ -15,6 +16,7 @@ import (
 )
 
 const (
+	defaultDateFormatForRequestParam = "2006-01-02 15:04:05.999999 -0700"
 	hasAuth = 1 << iota
 	hasRoom
 )
@@ -55,6 +57,11 @@ type reqRoom struct {
 	Name     string `json:"name"`
 	Handle   string `json:"handle"`
 	Password string `json:"password"`
+}
+
+type reqChatHistory struct {
+	From  string `json:"from"`
+	Until string `json:"until"`
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
@@ -183,6 +190,49 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	ck := &http.Cookie{Name: app.cfg.SessionCookie, Value: "", MaxAge: -1, Path: "/"}
 	http.SetCookie(w, ck)
 	respondJSON(w, true, nil, http.StatusOK)
+}
+
+//handleChatHistory handles request for chat history in requested time
+func handleChatHistory(w http.ResponseWriter, r *http.Request) {
+	var (
+		ctx = r.Context().Value("ctx").(*reqCtx)
+		app = ctx.app
+		room = ctx.room
+	)
+
+	if room == nil {
+		respondJSON(w, nil, errors.New("room is invalid or has expired"), http.StatusBadRequest)
+		return
+	}
+
+	req := reqChatHistory{
+		From:  r.URL.Query().Get("from"),
+		Until: r.URL.Query().Get("until"),
+	}
+
+	start, err := time.Parse(defaultDateFormatForRequestParam, req.From)
+
+	if err != nil {
+		respondJSON(w, nil, errors.New("error parsing JSON request for \"from\" param"), http.StatusBadRequest)
+		return
+	}
+
+	end, err := time.Parse(defaultDateFormatForRequestParam, req.Until)
+
+	if err != nil {
+		respondJSON(w, nil, errors.New("error parsing JSON request for \"until\" param"), http.StatusBadRequest)
+		return
+	}
+
+	chatHistory, err := app.hub.GetChatHistory(room.ID,start,end)
+
+	if err != nil {
+		app.logger.Printf("Error get chat history : %s",err)
+		respondJSON(w, nil, err, http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, chatHistory, nil, http.StatusOK)
 }
 
 // handleWS handles incoming connections.

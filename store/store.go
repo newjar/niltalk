@@ -21,7 +21,7 @@ type Store interface {
 
 type MessageCache interface {
 	AddMessageCache(payload Message) error
-	GetMessageCache(roomID string, limit int) ([]Message,error)
+	GetMessageCache(roomID string, limit int, dateFilter DateFilter) ([]Message,error)
 }
 
 // Room represents the properties of a room in the store.
@@ -42,6 +42,11 @@ type Message struct {
 	Time time.Time `json:"time"`
 	RoomID string `json:"room_id"`
 	Payload []byte `json:"payload"`
+}
+
+type DateFilter struct {
+	Start time.Time
+	End time.Time
 }
 
 // ErrRoomNotFound indicates that the requested room was not found.
