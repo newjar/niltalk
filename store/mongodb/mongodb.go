@@ -2,13 +2,16 @@ package mongodb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"time"
+
 	"github.com/knadh/niltalk/store"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
-	"time"
 )
 
 // Config represents the MongoDB store config structure.
@@ -43,69 +46,55 @@ func (m *MongoDB) AddMessageCache(payload store.Message) error {
 	return err
 }
 
-func (m *MongoDB) GetMessageCache(roomID string, limit int, dateFilter store.DateFilter) ([]store.Message,error) {
-	matchQuery := bson.D{
-		{"room_id",roomID},
-	}
+func (m *MongoDB) GetMessageCache(roomID string, limit int, dateFilter ...store.DateFilter) ([]store.Message,error) {
 
-	if !dateFilter.Start.IsZero() || !dateFilter.End.IsZero() {
-		dateFilterValue := bson.D{}
-		if !dateFilter.Start.IsZero() {
-			dateFilterValue = append(dateFilterValue,bson.E{
-				Key: "$gte",
-				Value: dateFilter.Start.UTC(),
+	dateFilters := []bson.M{}
+
+	for _, date := range dateFilter {
+		if !date.Start.IsZero() || !date.End.IsZero() {
+			dateFilterValue := bson.M{}
+			if !date.Start.IsZero() {
+				dateFilterValue["$gte"] = date.Start.UTC()
+			}
+	
+			if !date.End.IsZero() {
+				dateFilterValue["$lte"] = date.End.UTC()
+			}
+	
+			dateFilters = append(dateFilters,bson.M{
+				"_id": dateFilterValue,
 			})
 		}
-
-		if !dateFilter.End.IsZero() {
-			dateFilterValue = append(dateFilterValue,bson.E{
-				Key: "$lte",
-				Value: dateFilter.End.UTC(),
-			})
-		}
-
-		matchQuery = append(matchQuery,bson.E{
-			Key: "_id",
-			Value: dateFilterValue,
-		})
 	}
 
-	pipelineQuery := mongo.Pipeline{
-		bson.D{
-			{
-				"$match",
-				matchQuery,
-			},
-		},
-		bson.D{
-			{
-				"$sort",
-				bson.D{
-					{"_id",-1},
+	pipelineQuery := []bson.M{}
+	pipelineQuery = append(pipelineQuery, bson.M{
+		"$match": bson.M{
+				"$and": []bson.M{
+					{
+						"room_id": roomID,
+					},
+					{
+						"$or": dateFilters,
+					},
 				},
-			},
 		},
-	}
-
-	if limit > 0 {
-		pipelineQuery = append(pipelineQuery,bson.D{
-			{
-				"$limit",
-				limit,
-			},
-		})
-	}
-
-	pipelineQuery = append(pipelineQuery,bson.D{
-		{
-			"$sort",
-			bson.D{
-				{"_id",1},
-			},
+	},bson.M{
+		"$sort": bson.M{
+			"_id": -1,
 		},
 	})
 
-	cur, err := m.mongodb.Collection(MESSAGE_CACHE_COLLECTION).Aggregate(context.Background(),pipelineQuery)
+	if limit > 0 {
+		pipelineQuery = append(pipelineQuery,bson.M{
+				"$limit": limit,
+		})
+	}
+
+	pipelineQueryByte, _ := json.Marshal(pipelineQuery)
+	log.Printf("Pipeline Query : %s",pipelineQueryByte)
+ 	
+	cur, err := m.mongodb.Collection(MESSAGE_CACHE_COLLECTION).Aggregate(context.Background(), pipelineQuery)
 
 	if err != nil {
 		return nil, err

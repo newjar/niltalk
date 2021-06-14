@@ -194,14 +194,11 @@ func GenerateGUID(n int) (string, error) {
 	return string(bytes), nil
 }
 
-func (h *Hub) GetChatHistory(roomID string, start time.Time, end time.Time) ([]payloadMsgWrap, error) {
-	messagesCaches, err := h.MessageCache.GetMessageCache(roomID, 0, store.DateFilter{
-		Start: start,
-		End:   end,
-	})
+func (h *Hub) GetChatHistory(roomID string, dateFilters ...store.DateFilter) ([]payloadMsgWrap, error) {
+	messagesCaches, err := h.MessageCache.GetMessageCache(roomID, 0, dateFilters...)
 
 	if err != nil {
-		h.log.Printf("Error get chat history (roomID='%s';start='%s';end='%s') : %s",roomID,start,end,err)
+		h.log.Printf("Error get chat history (roomID='%s';date='%s') : %s",roomID,dateFilters,err)
 		return nil, err
 	}
 
@@ -212,7 +209,7 @@ func (h *Hub) GetChatHistory(roomID string, start time.Time, end time.Time) ([]p
 		err = json.Unmarshal(messageCache.Payload,&payload)
 
 		if err != nil {
-			h.log.Printf("Error unmarshal payload in get chat history (roomID='%s';start='%s';end='%s';payload='%s') : %s",roomID,start,end,messageCache.Payload,err)
+			h.log.Printf("Error unmarshal payload in get chat history (roomID='%s';date='%s';payload='%s') : %s",roomID,dateFilters,messageCache.Payload,err)
 			return nil, err
 		}
 

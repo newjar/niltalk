@@ -7,16 +7,20 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/gorilla/websocket"
 	"github.com/knadh/niltalk/internal/hub"
+	"github.com/knadh/niltalk/store"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
 	defaultDateFormatForRequestParam = "2006-01-02 15:04:05.999999 -0700"
+	dateFormat = "2006-01-02"
 	hasAuth = 1 << iota
 	hasRoom
 )
@@ -62,6 +66,9 @@ type reqRoom struct {
 type reqChatHistory struct {
 	From  string `json:"from"`
 	Until string `json:"until"`
+	Type string `json:"type"`
+	Hours string `json:"hours"`
+	TimeZone string `json:"timezone"`
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
@@ -208,23 +215,108 @@ func handleChatHistory(w http.ResponseWriter, r *http.Request) {
 	req := reqChatHistory{
 		From:  r.URL.Query().Get("from"),
 		Until: r.URL.Query().Get("until"),
+		Type: r.URL.Query().Get("type"),
+		Hours: r.URL.Query().Get("hours"),
+		TimeZone: r.URL.Query().Get("timezone"),
 	}
 
-	start, err := time.Parse(defaultDateFormatForRequestParam, req.From)
+	start, err := time.Parse(dateFormat, req.From)
 
 	if err != nil {
 		respondJSON(w, nil, errors.New("error parsing JSON request for \"from\" param"), http.StatusBadRequest)
 		return
 	}
 
-	end, err := time.Parse(defaultDateFormatForRequestParam, req.Until)
+	end, err := time.Parse(dateFormat, req.Until)
 
 	if err != nil {
 		respondJSON(w, nil, errors.New("error parsing JSON request for \"until\" param"), http.StatusBadRequest)
 		return
 	}
 
-	chatHistory, err := app.hub.GetChatHistory(room.ID,start,end)
+	if start.After(end) {
+		respondJSON(w, nil, errors.New("date of  \"from\" can't be after \"until\""), http.StatusBadRequest)
+		return
+	}
+
+	var timeLocation *time.Location
+	if req.TimeZone != "" {
+		timeLocation, _ = time.LoadLocation(req.TimeZone)
+	}
+
+	if timeLocation == nil {
+		timeLocation = time.UTC
+	}
+
+	hourArray := strings.Split(req.Hours, ",")
+	dateFilters := []store.DateFilter{}
+	now := time.Now()
+	nowStart := now.Truncate(24*time.Hour)
+	nowEnd := nowStart.Add(23 * time.Hour + 59*time.Minute + 59*time.Second)
+	app.logger.Printf("nowStart: %s; nowEnd: %s ",nowStart, nowEnd)
+	
+	dateLoop:
+	for i := start; !i.After(end); i = i.AddDate(0, 0, 1) {
+		if len(hourArray) <= 0 || req.Hours == "" {
+			dateFilter := store.DateFilter{
+				Start: time.Date(i.Year(), i.Month(), i.Day(), nowStart.In(timeLocation).Hour(), nowStart.In(timeLocation).Minute(), nowStart.In(timeLocation).Second(),nowStart.In(timeLocation).Nanosecond(), timeLocation),
+				End:   time.Date(i.Year(), i.Month(), i.Day(), nowEnd.In(timeLocation).Hour(), nowEnd.In(timeLocation).Minute(), nowEnd.In(timeLocation).Second(), nowEnd.In(timeLocation).Nanosecond(), timeLocation),
+			}
+
+			if !dateFilter.Start.Before(dateFilter.End) {
+				dateFilter.End = dateFilter.End.AddDate(0, 0, 1)
+			}
+
+			if now.Before(dateFilter.End.UTC()) {
+				dateFilter.End = now.In(timeLocation)
+			}
+
+			if dateFilter.Start.UTC().After(now.UTC()) {
+				break dateLoop
+			}
+
+			dateFilters = append(dateFilters, dateFilter)
+
+			continue
+		}
+
+		for _, hour := range hourArray {
+			var start, end time.Time
+			start, err = time.Parse(defaultDateFormatForRequestParam, i.Format(dateFormat)+" "+strings.Split(hour, "-")[0])
+
+			if err == nil {
+				end, err = time.Parse(defaultDateFormatForRequestParam, i.Format(dateFormat)+" "+strings.Split(hour, "-")[1])
+			}
+
+			if err != nil {
+				respondJSON(w, nil, errors.New("Error parsing hours for date"), http.StatusBadRequest)
+				return
+			}
+
+			if end.UTC().Before(start.UTC()) {
+				end = end.AddDate(0, 0, 1)
+			}
+
+			if now.Before(end) {
+				end = now.In(timeLocation)
+			}
+
+			if start.UTC().After(now.UTC()) {
+				break dateLoop
+			}
+
+			dateFilters = append(dateFilters, store.DateFilter{
+				Start: start.In(timeLocation),
+				End:   end.In(timeLocation),
+			})
+		}
+	}
+
+	sort.SliceStable(dateFilters, func(i, j int) bool {
+		return dateFilters[i].Start.Before(dateFilters[j].Start)
+	})
+ 
+	chatHistory, err := app.hub.GetChatHistory(room.ID,dateFilters...)
 
 	if err != nil {
 		app.logger.Printf("Error get chat history : %s",err)

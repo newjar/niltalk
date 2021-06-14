@@ -21,7 +21,7 @@ type Store interface {
 
 type MessageCache interface {
 	AddMessageCache(payload Message) error
-	GetMessageCache(roomID string, limit int, dateFilter DateFilter) ([]Message,error)
+	GetMessageCache(roomID string, limit int, dateFilter ...DateFilter) ([]Message,error)
 }
 
 // Room represents the properties of a room in the store.
