@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +71,7 @@ type reqChatHistory struct {
 	Type string `json:"type"`
 	Hours string `json:"hours"`
 	TimeZone string `json:"timezone"`
+	InCSV string `json:"in_csv"`
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
@@ -218,6 +221,7 @@ func handleChatHistory(w http.ResponseWriter, r *http.Request) {
 		Type: r.URL.Query().Get("type"),
 		Hours: r.URL.Query().Get("hours"),
 		TimeZone: r.URL.Query().Get("timezone"),
+		InCSV: r.URL.Query().Get("in_csv"),
 	}
 
 	start, err := time.Parse(dateFormat, req.From)
@@ -324,7 +328,42 @@ func handleChatHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, chatHistory, nil, http.StatusOK)
+	dataToCSV := [][]string{
+		{
+			"TIMESTAMP",
+			"MESSAGE",
+			"PEER",
+			"PEER_ID",
+		},
+	}
+
+	if req.InCSV == "true" {
+		b := &bytes.Buffer{}
+		wr := csv.NewWriter(b)
+		
+		for _, chat := range chatHistory{
+			js, _:= json.Marshal(chat.Data)
+			data := make(map[string]interface{})
+			json.Unmarshal([]byte(js), &data)
+			dataToCSV = append(dataToCSV, []string{
+				chat.Timestamp.Format(defaultDateFormatForRequestParam),
+				data["message"].(string),
+				data["peer_handle"].(string),
+				data["peer_id"].(string),
+			})
+		}
+
+		fileName := "Chat_Report_"+req.From+"_to_"+req.Until+".csv"
+
+		wr.WriteAll(dataToCSV)
+		wr.Flush()
+
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment;filename="+fileName)
+		w.Write(b.Bytes())
+	} else {
+		respondJSON(w, chatHistory, nil, http.StatusOK)
+	}
 }
 
 // handleWS handles incoming connections.
